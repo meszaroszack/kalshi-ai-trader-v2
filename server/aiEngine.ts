@@ -501,7 +501,8 @@ async function checkExit(settings: any, creds: any, swing: AISwingTrade, market:
 
     if (hasBid) {
       try {
-        const exitPrice = Math.max(1, Math.min(99, currentAsk > 0 ? currentAsk : currentBid));
+        // Taker: sell at bid to hit the bid and get filled immediately (not maker at ask)
+        const exitPrice = Math.max(1, Math.min(99, currentBid));
         await placeOrder(creds.apiKeyId, creds.privateKeyPem, swing.ticker, swing.side, "sell", swing.count, exitPrice, creds.environment);
         const pnlDollars = ((currentBid - swing.entryPriceInCents) / 100) * swing.count;
         await storage.updateTrade(swing.tradeId, {
@@ -561,7 +562,8 @@ async function checkExit(settings: any, creds: any, swing: AISwingTrade, market:
         return;
       }
 
-      const exitPrice = Math.max(1, Math.min(99, askNow > 0 ? askNow : bidNow));
+      // Taker: sell at bid to get filled immediately (not maker at ask)
+      const exitPrice = Math.max(1, Math.min(99, bidNow));
       await placeOrder(creds.apiKeyId, creds.privateKeyPem, swing.ticker, swing.side, "sell", swing.count, exitPrice, creds.environment);
       const pnlDollars = ((bidNow - swing.entryPriceInCents) / 100) * swing.count;
       await storage.updateTrade(swing.tradeId, {
@@ -639,6 +641,7 @@ async function runCycle() {
     if (currentMarketTicker !== marketTicker) {
       if (cooldownSkipsRemaining > 0) cooldownSkipsRemaining--;
       currentMarketTicker = marketTicker;
+      consecutiveSkips = 0; // New market = fresh chance to call AI (prevents "freeze" after 3 SKIPs)
     }
     if (cooldownSkipsRemaining === 0) {
       const cooldown = memory.checkCooldown();
