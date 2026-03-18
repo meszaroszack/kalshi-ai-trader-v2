@@ -1,0 +1,46 @@
+# Common Workflows
+
+## WORKFLOW: Greenfield Feature
+
+Use this whenever I say "build a new feature", "scaffold", or "add module".
+
+1. Clarify:
+   - Confirm requirements, inputs/outputs, and constraints.
+   - Ask where this should plug into the existing architecture.
+
+2. Propose Architecture:
+   - Suggest where code should live (folders, files).
+   - Call out any new dependencies or configuration.
+
+3. Plan Files:
+   - List each file to create or modify.
+   - For each file, describe its responsibility in 1–2 sentences.
+
+4. Implement in Passes:
+   - Pass 1: interfaces, types, and stubs.
+   - Pass 2: core logic.
+   - Pass 3: tests.
+   - Pass 4: docs / comments / small cleanups.
+
+5. Recap:
+   - Summarize what changed and any follow-up tasks.
+
+## WORKFLOW: Surgical Refactor / Bugfix
+
+Use this whenever I mention a bug, refactor, or "change behavior".
+
+1. Locate:
+   - Find all relevant call sites and modules.
+   - Summarize current behavior and risks.
+
+2. Plan:
+   - Describe the smallest change that solves the problem.
+   - Identify any behavior that must not change.
+
+3. Implement:
+   - Make minimal changes.
+   - Highlight any public API or contract changes.
+
+4. Validate:
+   - Suggest concrete test cases.
+   - Point out possible regressions to watch for.

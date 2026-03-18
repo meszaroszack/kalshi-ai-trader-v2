@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.env.local
+*.key
+*.pem
+trading_memory.db

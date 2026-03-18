@@ -1,0 +1,9 @@
+# Guardrails
+
+- Do NOT delete or rename files unless I explicitly ask.
+- Do NOT add new external services, APIs, or paid dependencies.
+- Prefer standard library and existing project utilities.
+- Before large changes (touching many files), propose a migration
+  strategy and get approval.
+- Treat any environment or secrets files as sensitive; never
+  invent fake secrets or log them.
