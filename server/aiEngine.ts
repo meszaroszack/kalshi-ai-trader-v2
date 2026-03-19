@@ -83,7 +83,7 @@ let emitter: EventEmitter | null = null;
 let priceHistory: number[] = [];
 
 // V2: one entry per market, skip optimization, cooldown
-const tradedMarkets = new Set<string>();
+const marketTradeCount = new Map<string, number>();
 let consecutiveSkips = 0;
 let cooldownSkipsRemaining = 0;
 let currentMarketTicker: string | null = null;
@@ -640,6 +640,7 @@ async function runCycle() {
     const marketTicker = state.currentMarket.ticker;
     if (currentMarketTicker !== marketTicker) {
       if (cooldownSkipsRemaining > 0) cooldownSkipsRemaining--;
+      marketTradeCount.delete(currentMarketTicker ?? "");
       currentMarketTicker = marketTicker;
       consecutiveSkips = 0; // New market = fresh chance to call AI (prevents "freeze" after 3 SKIPs)
     }
@@ -650,12 +651,13 @@ async function runCycle() {
 
     if (!state.activeSwingTrade && priceHistory.length >= 5 && cooldownSkipsRemaining === 0) {
       const msToClose = new Date(state.currentMarket.close_time).getTime() - Date.now();
+      const secondsToClose = Math.round(msToClose / 1000);
       if (msToClose >= 90_000) {
         if (state.balance >= settings.targetBalance) {
           await storage.updateBotSettings({ enabled: false });
           broadcast("info", { message: `Target $${settings.targetBalance} reached — bot paused` });
         } else {
-          // V2: skip AI call when 3+ consecutive SKIPs and flat (save API cost)
+          if (secondsToClose < 600) consecutiveSkips = 0;
           if (consecutiveSkips >= 3) {
             // Don't call AI this cycle
           } else {
@@ -683,10 +685,10 @@ async function runCycle() {
   });
 }
 
-// V2: one entry per market — block new BUY if we already traded this ticker
+// V2: allow up to 3 trades per market window
 function shouldTrade(marketTicker: string, action: string): boolean {
   if (action === "skip" || action === "HOLD" || action === "EXIT" || action === "SKIP") return true;
-  if (tradedMarkets.has(marketTicker)) return false;
+  if ((marketTradeCount.get(marketTicker) ?? 0) >= 3) return false;
   return true;
 }
 
@@ -775,7 +777,7 @@ async function tryAIEntry(
 
   try {
     const order = await placeOrder(creds.apiKeyId, creds.privateKeyPem, market.ticker, side, "buy", count, priceInCents, creds.environment);
-    tradedMarkets.add(market.ticker);
+    marketTradeCount.set(market.ticker, (marketTradeCount.get(market.ticker) ?? 0) + 1);
 
     memory.logDecision(
       {
