@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Settings, History, Activity } from "lucide-react";
+import { LayoutDashboard, Settings, History, Activity, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/history", icon: History, label: "Trade History" },
+  { href: "/strategy", icon: Lightbulb, label: "Strategy" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
 

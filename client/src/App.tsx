@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import Dashboard from "@/pages/Dashboard";
 import Settings from "@/pages/Settings";
 import TradeHistory from "@/pages/TradeHistory";
+import Strategy from "@/pages/Strategy";
 import NotFound from "@/pages/not-found";
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
         <Route path="/" component={Dashboard} />
         <Route path="/settings" component={Settings} />
         <Route path="/history" component={TradeHistory} />
+        <Route path="/strategy" component={Strategy} />
         <Route component={NotFound} />
       </Switch>
       <Toaster />
