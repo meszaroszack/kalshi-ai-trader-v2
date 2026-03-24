@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import * as memory from "./memory";
 import {
   getBtcPrice, getBtc15mMarkets, getBalance, getOpenPositions,
-  getSettledPositions, getOpenOrders, placeOrder, KalshiMarket
+  getSettledPositions, getOpenOrders, placeOrder, getOrderFills, cancelOrder, KalshiMarket
 } from "./kalshi";
 import type { EventEmitter } from "events";
 
@@ -532,7 +532,22 @@ async function checkExit(settings: any, creds: any, swing: AISwingTrade, market:
             resolvedStatus = resolvedPnl >= 0 ? "won" : "lost";
           }
         }
-      } catch {}
+      } catch (settleErr: any) {
+        console.warn(
+          "[checkExit] Settlement P&L fetch failed for", swing.ticker, "—", settleErr.message,
+          "— trade closed with null P&L, verify manually in Kalshi dashboard"
+        );
+        await storage.updateTrade(swing.tradeId, {
+          status: "settled",
+          pnl: null,
+          signalReason: `SETTLED: P&L fetch failed (${settleErr.message}) — verify in Kalshi dashboard`,
+          resolvedAt: new Date(),
+        });
+        state.activeSwingTrade = null;
+        state.lastExitReason = `Market settled — P&L unknown (fetch failed)`;
+        broadcast("info", { message: state.lastExitReason });
+        return;
+      }
     }
     await storage.updateTrade(swing.tradeId, {
       status: resolvedStatus, pnl: resolvedPnl,
@@ -564,8 +579,20 @@ async function checkExit(settings: any, creds: any, swing: AISwingTrade, market:
       try {
         // Taker: sell at bid to hit the bid and get filled immediately (not maker at ask)
         const exitPrice = Math.max(1, Math.min(99, currentBid));
-        await placeOrder(creds.apiKeyId, creds.privateKeyPem, swing.ticker, swing.side, "sell", swing.count, exitPrice, creds.environment);
-        const pnlDollars = ((currentBid - swing.entryPriceInCents) / 100) * swing.count;
+        const safetySellOrder = await placeOrder(creds.apiKeyId, creds.privateKeyPem, swing.ticker, swing.side, "sell", swing.count, exitPrice, creds.environment);
+        let confirmedSafetyExitPrice = exitPrice;
+        try {
+          const safetyFills = await getOrderFills(
+            creds.apiKeyId, creds.privateKeyPem, safetySellOrder.order_id, creds.environment
+          );
+          if (safetyFills.length > 0) {
+            const fp = swing.side === "yes" ? safetyFills[0].yes_price : safetyFills[0].no_price;
+            if (fp > 0) confirmedSafetyExitPrice = fp;
+          }
+        } catch (fillErr: any) {
+          console.warn("[AI] Could not fetch safety exit fill price, using bid price:", fillErr.message);
+        }
+        const pnlDollars = ((confirmedSafetyExitPrice - swing.entryPriceInCents) / 100) * swing.count;
         await storage.updateTrade(swing.tradeId, {
           status: pnlDollars >= 0 ? "won" : "lost",
           pnl: pnlDollars,
@@ -625,8 +652,20 @@ async function checkExit(settings: any, creds: any, swing: AISwingTrade, market:
 
       // Taker: sell at bid to get filled immediately (not maker at ask)
       const exitPrice = Math.max(1, Math.min(99, bidNow));
-      await placeOrder(creds.apiKeyId, creds.privateKeyPem, swing.ticker, swing.side, "sell", swing.count, exitPrice, creds.environment);
-      const pnlDollars = ((bidNow - swing.entryPriceInCents) / 100) * swing.count;
+      const sellOrder = await placeOrder(creds.apiKeyId, creds.privateKeyPem, swing.ticker, swing.side, "sell", swing.count, exitPrice, creds.environment);
+      let confirmedExitPrice = exitPrice;
+      try {
+        const exitFills = await getOrderFills(
+          creds.apiKeyId, creds.privateKeyPem, sellOrder.order_id, creds.environment
+        );
+        if (exitFills.length > 0) {
+          const fp = swing.side === "yes" ? exitFills[0].yes_price : exitFills[0].no_price;
+          if (fp > 0) confirmedExitPrice = fp;
+        }
+      } catch (fillErr: any) {
+        console.warn("[AI] Could not fetch sell fill price, using bid price:", fillErr.message);
+      }
+      const pnlDollars = ((confirmedExitPrice - swing.entryPriceInCents) / 100) * swing.count;
       await storage.updateTrade(swing.tradeId, {
         status: pnlDollars >= 0 ? "won" : "lost",
         pnl: pnlDollars,
@@ -872,15 +911,42 @@ async function tryAIEntry(
     });
 
     // Confirm fill: if order_id is NOT in resting orders, it was filled immediately
+    let orderIsResting = false;
     try {
       const restingOrders = await getOpenOrders(creds.apiKeyId, creds.privateKeyPem, creds.environment);
-      const isResting = restingOrders.some((o: any) => o.order_id === order.order_id);
-      if (!isResting) {
+      orderIsResting = restingOrders.some((o: any) => o.order_id === order.order_id);
+      if (!orderIsResting) {
         await storage.updateTrade(trade.id, { status: "filled" });
       }
     } catch (e: any) {
       console.error("[AI] Failed to confirm order fill status:", e.message);
     }
+
+    if (orderIsResting) {
+      try {
+        await cancelOrder(creds.apiKeyId, creds.privateKeyPem, order.order_id, creds.environment);
+        await storage.updateTrade(trade.id, { status: "cancelled" });
+        console.warn("[AI] Order was resting (not filled immediately) — cancelled to prevent phantom position");
+      } catch (cancelErr: any) {
+        console.error("[AI] Could not cancel resting order:", cancelErr.message);
+      }
+      return;
+    }
+
+    let confirmedEntryPrice = priceInCents;
+    try {
+      const fills = await getOrderFills(
+        creds.apiKeyId, creds.privateKeyPem, order.order_id, creds.environment
+      );
+      if (fills.length > 0) {
+        const fp = side === "yes" ? fills[0].yes_price : fills[0].no_price;
+        if (fp > 0) confirmedEntryPrice = fp;
+      }
+    } catch (fillErr: any) {
+      console.warn("[AI] Could not fetch buy fill price, using limit price:", fillErr.message);
+    }
+
+    await storage.updateTrade(trade.id, { pricePerContract: confirmedEntryPrice });
 
     state.activeSwingTrade = {
       tradeId: trade.id,
@@ -888,7 +954,7 @@ async function tryAIEntry(
       ticker: market.ticker,
       side,
       count,
-      entryPriceInCents: priceInCents,
+      entryPriceInCents: confirmedEntryPrice,
       btcPriceAtEntry: state.btcPrice,
       openedAt: Date.now(),
       aiReasoning: decision.reasoning,
