@@ -21,6 +21,8 @@ export interface KalshiMarket {
   close_time: string;
   status: string;
   open_time?: string;
+  floor_strike?: number;
+  price_to_beat?: number;
 }
 
 export interface KalshiOrder {
@@ -135,6 +137,8 @@ export async function getBtc15mMarkets(env = "production"): Promise<KalshiMarket
       close_time: m.close_time,
       status: m.status,
       open_time: m.open_time,
+      floor_strike: m.floor_strike ?? m.result?.floor_strike ?? null,
+      price_to_beat: m.price_to_beat ?? m.result?.price_to_beat ?? null,
     };
   });
 }

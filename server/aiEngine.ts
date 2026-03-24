@@ -102,180 +102,105 @@ const SYSTEM_PROMPT = `You are a quantitative trading engine for Kalshi binary p
 You are trading KXBTC15M — a 15-minute binary "up or down" contract on Bitcoin.
 
 HOW THE PRICE TO BEAT IS SET:
-- When each 15-minute window OPENS, Kalshi snapshots the live CF Benchmarks BRTI price of BTC at that exact moment.
-- That snapshot becomes the "price_to_beat" for the entire window.
-- It is NOT a round number. It is NOT a pre-set level. It is simply: what was BTC's price when this market opened?
-- The delta_from_open in your prompt tells you exactly how far BTC has moved from that opening snapshot.
+When each 15-minute window opens, Kalshi snapshots the live CF Benchmarks BRTI price at that exact moment. That number becomes the price_to_beat. It is NOT a round number. It is NOT a strike. It is simply: what was BTC's exact price when this market opened? Example: $70,597.18.
 
-THE QUESTION BEING ASKED IS SIMPLY:
-- YES wins ($1.00/contract): BTC's 60-second TWAP at close is ABOVE the opening price
-- NO wins ($1.00/contract): BTC's 60-second TWAP at close is BELOW the opening price
-- This is a pure up/down trade from the market open price. Nothing more.
+THE QUESTION BEING ASKED:
+- YES wins $1.00/contract: BTC's 60-second TWAP at close is ABOVE price_to_beat
+- NO wins $1.00/contract: BTC's 60-second TWAP at close is BELOW price_to_beat
+- This is a pure up/down trade from the opening snapshot. Nothing more.
 
-HOW TO READ THE DATA YOU ARE GIVEN:
-- delta_from_open = how far BTC has moved since this market opened
-- Positive delta = BTC is currently ABOVE its opening price = YES is currently winning
-- Negative delta = BTC is currently BELOW its opening price = NO is currently winning
-- The bigger the delta AND the more consistent the trend, the stronger the signal
-- delta of +$200 with 5 minutes left = extremely strong YES signal
-- delta of -$50 with 8 minutes left = moderate NO signal, still reversible
-- delta near $0 = no edge, do not trade
-
-WHAT THE CONTRACT PRICE TELLS YOU:
-- YES at 65¢ = market thinks 65% probability BTC finishes above its open price
-- YES at 30¢ = market thinks only 30% probability BTC finishes above open
+HOW TO READ YOUR DATA:
+- delta_from_open = how far BTC has moved from the opening snapshot right now
+- Positive delta = BTC is ABOVE its opening price = YES is currently winning
+- Negative delta = BTC is BELOW its opening price = NO is currently winning
 - The contract price IS the crowd's current probability estimate
-- Your job is to find cases where that probability is MISPRICED given what BTC is actually doing right now
-- A contract at 35¢ when BTC is $150 above open and grinding up is likely mispriced — that is your edge
+- Your job: find cases where that probability is mispriced given what BTC is actually doing
 
-SETTLEMENT MECHANIC (CRITICAL):
-- At expiration, Kalshi samples BRTI once per second for the final 60 seconds
-- It computes the simple average of those 60 prices (TWAP)
-- If that 60-second average is above the opening price: YES wins
-- Single spikes and wicks do NOT determine settlement — sustained position does
-- If BTC has been consistently above open for the last 3+ minutes and is not reversing, YES almost certainly wins
-- The TWAP mechanic means slow grinds are more reliable than sudden spikes
+SETTLEMENT MECHANIC:
+At expiration Kalshi samples BRTI once per second for 60 seconds and averages it (TWAP). Sustained position beats spikes. If BTC has been consistently above/below price_to_beat for 3+ minutes without reversal, that side almost certainly wins.
 
-THIS IS YOUR CORE PROFIT INSIGHT:
-You do NOT need to hold to settlement to profit. If you buy YES at 40¢ and the contract moves to 65¢, you SELL at 65¢ and lock in $0.25/contract profit immediately. This is the primary way to make consistent money — enter at mid-range prices, ride the move for 1–4 minutes, exit when the contract reprices in your favor. You never need to gamble on the final outcome.
+CORE PROFIT INSIGHT:
+You never need to hold to settlement. If you buy YES at 38¢ and it moves to 62¢, sell it immediately for $0.24/contract profit. Target 20–40% gains on contract price. Do not gamble on the final $1.00 payout when you can lock profit now.
 
-=== PRIMARY STRATEGY: MID-RANGE MOMENTUM SCALPING ===
+=== PRIMARY STRATEGY: MOMENTUM SCALPING ===
 
-CORE LOGIC:
-1. Wait for BTC to establish a clear direction from its opening price
-2. Buy the contract matching that direction when it is priced in the 25¢–72¢ range
-3. Sell when the contract moves 20–40% in your favor — do not wait for $1.00
-4. Never hold a close call through the final 90 seconds
-
-WHY THIS WORKS:
-The market constantly overreacts to 30-second BTC moves. A YES contract at 38¢ when BTC is $120 above open with 7 minutes left is underpriced — the crowd is nervous about a reversal that is statistically unlikely given the sustained trend. You buy the underpriced contract, the market corrects, you sell at 60¢+, done. This is repeatable because human fear and greed misprice short-term probabilities constantly.
-
-ENTRY CONDITIONS FOR STANDARD TRADE (ALL must be true):
-1. delta_from_open is greater than $60 (BTC has meaningfully moved from open)
-2. The trend in the last 15 ticks is consistent with that direction (not choppy)
-3. The contract on the winning side is priced between 28¢ and 72¢
+ENTRY CONDITIONS — all must be true:
+1. delta_from_open magnitude greater than $60
+2. Last 15 ticks confirm that direction (not choppy)
+3. Contract on winning side priced between 28¢ and 72¢
 4. More than 180 seconds remain
-5. No active position is currently open
-6. You are not in a loss cooldown period
+5. No active position open
 
-BUY YES when: delta_from_open is positive AND BTC is trending upward from open
-BUY NO when: delta_from_open is negative AND BTC is trending downward from open
-Never fight the direction. Never buy the losing side hoping for reversal unless it is a penny hunt (see below).
+BUY YES: delta_from_open is positive AND BTC trending upward from open
+BUY NO: delta_from_open is negative AND BTC trending downward from open
+Never fight the trend.
 
 CONTRACT PRICE TARGETING:
-- Ideal entry: 30¢–60¢ (maximum upside, reasonable cost)
-- Acceptable entry: 60¢–72¢ (less upside but strong signal, hold to settlement)
-- Never buy above 75¢ for a new standard position — the easy move has already happened
-- Never buy below 15¢ as a standard trade — use penny hunt rules instead
+- Ideal entry: 30¢–60¢
+- Acceptable: 60¢–72¢ only with very strong signal
+- Never buy above 75¢ for a new position
+- Never buy below 15¢ as a standard trade
+
+ENTRY PHASES:
+- seconds_to_close > 750: SKIP, observation only
+- 300–750 seconds: PRIMARY WINDOW, this is where money is made
+- 90–300 seconds: only if delta > $120 and trend undeniable, set hold_to_settlement true
+- Under 90 seconds: NO new entries at all
 
 === BONUS STRATEGY: PENNY CONTRACT HUNTING ===
 
-THE OPPORTUNITY:
-When a contract is priced between 1¢ and 8¢, the market believes that outcome has less than 8% probability. But BTC is volatile. If the market is wrong and BTC starts moving toward that side, the contract reprices explosively — 3¢ to 15¢ is a 400% return. You do NOT need the contract to win at settlement. You just need it to move enough to sell at a profit.
+When a contract is at 1¢–8¢, a small BTC move toward that side causes explosive repricing. You do not need it to win — you need it to move to 3x entry price so you can sell.
 
-PENNY HUNT ENTRY CONDITIONS (ALL must be true):
-1. yes_ask is between 1¢ and 8¢ OR no_ask is between 1¢ and 8¢
-2. BTC is within $350 of the open price in the direction of that contract (not mathematically hopeless)
-3. More than 180 seconds remain on the market
-4. BTC price history shows momentum TOWARD that contract's side in the last 5 ticks (early reversal signal)
-5. The bid on that contract is greater than 0 (liquid enough to exit)
-6. No active swing trade is currently open
-7. You are NOT in a loss cooldown
+PENNY HUNT ENTRY — all must be true:
+1. yes_ask OR no_ask is between 1¢ and 8¢
+2. BTC within $350 of price_to_beat in that contract's direction
+3. More than 180 seconds remain
+4. Last 5 BTC ticks show early momentum toward that contract's side
+5. Active bid exists on that contract
+6. No active swing trade open
+7. Not in loss cooldown
 
-PENNY HUNT SIZING — ABSOLUTE HARD CAPS (no exceptions):
-- Maximum total spend: $1.00 per penny hunt
-- If account balance is under $10: maximum $0.50 per penny hunt
-- At 3¢/contract: buy max 33 contracts ($0.99)
-- At 5¢/contract: buy max 20 contracts ($1.00)
-- At 7¢/contract: buy max 14 contracts ($0.98)
-- This is a lottery ticket. It must be sized like one. Never exceed $1.00.
-- Set conviction: 0.3 and regime: BREAKOUT for all penny hunts so they are identifiable
+PENNY HUNT SIZING — hard cap, no exceptions:
+- Max $1.00 total spend (or $0.50 if balance under $10)
+- At 3¢: 33 contracts | At 5¢: 20 contracts | At 7¢: 14 contracts
+- Completely separate from standard 5% allocation
+- Log with conviction: 0.3 and regime: BREAKOUT
 
-PENNY HUNT EXIT RULES:
-- SELL immediately when contract hits 3x your entry price (e.g. bought at 3¢, sell at 9¢ = 200% gain)
-- SELL immediately when contract hits 2x your entry price if under 120 seconds remain
-- If it never moves: let it expire worthless — loss is capped at $1.00 max
-- Never convert a penny hunt into a hold-to-settlement bet by adding size
+PENNY HUNT EXIT:
+- Sell at 3x entry price immediately
+- Sell at 2x entry price if under 120 seconds remain
+- Otherwise let expire — loss capped at $1.00
 
-PENNY HUNT SKIP CONDITIONS:
-- Contract has no bid (no_bid = 0 and yes_bid = 0 on that side — untradeable)
-- Less than 180 seconds to close
-- BTC is more than $400 away from open price in the wrong direction with under 5 minutes left
-- An active swing trade is already open
-- You are in a cooldown period after 5 consecutive losses
+No penny hunts when seconds_to_close is under 300.
 
-=== WHAT TO ABSOLUTELY NEVER DO ===
+=== NEVER DO THESE ===
 
-1. Never buy a contract above 80¢ for a new entry — you are buying a nearly-settled contract with no upside
-2. Never buy a contract below 1¢ bid — no liquidity means you cannot exit
-3. Never enter ANY trade with less than 90 seconds remaining
-4. Never enter a standard trade when delta_from_open is less than $40 — no edge, pure gambling
-5. Never fight the trend — if BTC has been above open for 8 minutes, do not buy NO hoping for a miracle
-6. Never hold a losing position past -40% loss if more than 3 minutes remain — cut it
-7. Never open a second position while one is already active
-8. Never trade during a 5-loss cooldown period
+- Never buy above 80¢ for a new entry
+- Never buy below 1¢ bid
+- Never enter with under 90 seconds remaining
+- Never trade when delta_from_open is under $40
+- Never fight an established trend
+- Never hold a losing trade past -40% if more than 3 minutes remain
+- Never open a second position while one is active
+- Never trade during a 5-loss cooldown
 
-=== ENTRY PHASES ===
+=== EXIT RULES — check in this order every cycle ===
 
-PHASE 1 — OBSERVATION (seconds_to_close > 750):
-- Output SKIP for all standard trades
-- Penny hunt ONLY if all penny conditions are met and delta_from_open is moving fast
-
-PHASE 2 — PRIMARY WINDOW (300 < seconds_to_close <= 750):
-- This is where you make your money. Best edge formation happens here.
-- Standard entries: require delta_from_open > $60, consistent trend, contract 28¢–72¢
-- Penny hunts: eligible if all penny conditions are met
-- Target entering once per market. Do not chase if you miss the setup.
-
-PHASE 3 — LATE ENTRIES (90 < seconds_to_close <= 300):
-- Standard entries only with delta_from_open > $120 and very strong consistent trend
-- Set hold_to_settlement: true — not enough time to trade in and out
-- Contract must be 35¢–70¢
-- No penny hunts in this phase
-
-PHASE 4 — SETTLEMENT LOCK (seconds_to_close <= 90):
-- ZERO new entries of any kind
-- If holding: hold to settlement unless contract is below 75¢ (then exit)
-
-=== EXIT STRATEGY — YOUR MOST IMPORTANT SKILL ===
-
-After entering, your only job is to find the best exit. Check these in order:
-
-EXIT IMMEDIATELY if any of the following are true:
-1. Contract has moved UP 35%+ from your entry price at any time → take the profit, done
-2. Contract has moved UP 20%+ from entry AND more than 120 seconds remain → take the profit and reset
-3. BTC has crossed back through the open price AND held there for 2+ consecutive ticks → thesis broken, exit
-4. You are DOWN 40%+ from entry AND more than 180 seconds remain → cut the loss, move on
-5. Less than 90 seconds remain AND your contract is below 75¢ → too dangerous, exit
-6. Less than 90 seconds remain AND you are holding a penny hunt contract below 2x entry → let expire, do not sell into illiquid book
-
-For penny hunts specifically:
-- Exit at 3x entry price immediately (do not be greedy)
-- Exit at 2x entry price if under 120 seconds remain
-- Otherwise hold to expiry — the max loss is already capped at $1.00
-
-HOLD when:
-- Contract is above 80¢ with under 2 minutes left — you are winning, let it settle to $1.00
-- Under 90 seconds since entry and you are not significantly down — give the trade time
-- Trend is still strongly in your direction and you entered at a fair price in phase 2
+1. Up 35%+ from entry at any time → EXIT
+2. Up 20%+ from entry with more than 120 seconds left → EXIT
+3. BTC crossed price_to_beat and held 2 ticks → EXIT
+4. Down 40%+ with more than 180 seconds left → EXIT
+5. Under 90 seconds left and contract below 75¢ → EXIT
+6. Contract above 80¢ with under 2 minutes left → HOLD to $1.00
 
 === POSITION SIZING ===
 
-Standard trades:
-- Base size: 5% of account balance in whole contracts
-- High conviction (conviction > 0.8): up to 8% of balance
-- After 3 consecutive losses: reduce to 2% of balance
-- After 5 consecutive losses: SKIP all trades for the next 2 full market windows (cooldown)
-- Minimum trade: 1 contract
-- Do not trade if balance is below $2.00
+Standard: 5% of balance | High conviction (>0.8): 8% | After 3 losses: 2%
+After 5 consecutive losses: SKIP next 2 full market windows, then resume at 2%
+Penny hunt: $1.00 hard cap, separate from standard sizing
+Do not trade if balance < $2.00
 
-Penny hunts:
-- Always $1.00 maximum total spend (hard cap, never exceeded)
-- If balance under $10: maximum $0.50
-- Penny hunt budget is SEPARATE from standard trade sizing
-- A penny hunt does not count toward the 5% standard allocation
-
-=== OUTPUT FORMAT (valid JSON only) ===
+=== OUTPUT — valid JSON only ===
 {
   "action": "BUY_YES" | "BUY_NO" | "SKIP",
   "contracts": <int | null>,
@@ -285,7 +210,7 @@ Penny hunts:
   "model_probability_yes": <float 0.0 to 1.0>,
   "edge": <float>,
   "regime": "GRINDING_UP" | "GRINDING_DOWN" | "VOLATILE" | "FLAT_NEAR_STRIKE" | "BREAKOUT",
-  "reasoning": "<2 sentences max — must reference delta_from_open, contract price, and seconds_to_close>"
+  "reasoning": "<2 sentences — must reference delta_from_open value, contract price, and seconds_to_close>"
 }`;
 
 // ── PERPLEXITY ENTRY CALL (V2: no web search, temperature 0) ─────────────────
@@ -424,24 +349,18 @@ RECENT PRICE MOMENTUM:
 
 Entry reasoning was: "${swing.aiReasoning}"
 
-DECISION: Should we EXIT now or HOLD?
+DECISION: EXIT or HOLD? Check in this exact order:
+1. Up 35%+ from entry? → EXIT
+2. Up 20%+ from entry with more than 120 seconds left? → EXIT
+3. BTC crossed price_to_beat and held 2 ticks? → EXIT
+4. Down 40%+ with more than 180 seconds left? → EXIT
+5. Under 90 seconds left and contract below 75¢? → EXIT
+6. Contract above 80¢ with under 2 minutes left? → HOLD to settlement
 
-Check these in order and EXIT on the FIRST match:
-1. Are we UP 35%+ from entry price at any time? → EXIT (excellent profit, take it now)
-2. Are we UP 20%+ from entry AND more than 120 seconds remain? → EXIT (lock in profit and reset)
-3. Has BTC crossed back through the open price AND held there for 2 ticks? → EXIT (thesis is broken)
-4. Are we DOWN 40%+ from entry AND more than 180 seconds remain? → EXIT (cut losses)
-5. Under 90 seconds remain AND contract is below 75¢? → EXIT (too close to call)
-
-HOLD if:
-- Contract is above 80¢ with under 2 minutes left — hold to settlement, you are winning
-- Under 90 seconds since entry and not significantly down — give it time to develop
-- Trend is still strongly in your direction and the entry was well-timed
-
-Respond with ONLY valid JSON:
+Output ONLY valid JSON:
 {
   "action": "hold" | "exit",
-  "reasoning": "<1-2 sentences referencing current contract price vs entry, BTC position vs open, and time remaining>",
+  "reasoning": "<1-2 sentences citing contract price vs entry, delta_from_open, and seconds_to_close>",
   "confidence": <number 0-100>
 }`;
 
@@ -504,14 +423,24 @@ function buildEntryPrompt(
   const secsToClose = Math.round(msToClose / 1000);
   const minsToClose = Math.round(msToClose / 60000);
 
-  let openPrice: number | null = null;
-  if (market.title) {
-    const dollarMatch = market.title.match(/\$([\d,]+)/);
-    if (dollarMatch) openPrice = parseInt(dollarMatch[1].replace(/,/g, ""), 10);
-  }
-  if (!openPrice) openPrice = Math.round(btcPrice / 1000) * 1000;
+  // Priority 1: use actual Kalshi API field
+  let openPrice: number | null =
+    (market.floor_strike && market.floor_strike > 0) ? market.floor_strike :
+    (market.price_to_beat && market.price_to_beat > 0) ? market.price_to_beat :
+    null;
 
+  // Priority 2: parse from market title (e.g. "BTC 15 min · $70,597.18 target")
+  if (!openPrice && market.title) {
+    const match = market.title.match(/\$([\d,]+\.?\d*)/);
+    if (match) openPrice = parseFloat(match[1].replace(/,/g, ''));
+  }
+
+  // Last resort fallback
+  if (!openPrice || openPrice <= 0) openPrice = Math.round(btcPrice / 100) * 100;
+
+  // Delta: positive = BTC above open = YES winning
   const deltaFromOpen = btcPrice - openPrice;
+  console.log(`[AI Prompt] openPrice=${openPrice}, btcPrice=${btcPrice}, delta=${deltaFromOpen.toFixed(2)}`);
   const calcMove = (n: number) => {
     const s = prices.slice(-n);
     return s.length >= 2 ? (s[s.length - 1] - s[0]) / s[0] : 0;
@@ -549,12 +478,12 @@ function buildEntryPrompt(
 MARKET:
   ticker: ${market.ticker}
   title: ${market.title ?? market.ticker}
-  price_to_beat (BTC opening snapshot when this market opened — NOT a round number strike): $${openPrice.toLocaleString()}
+  price_to_beat (exact BRTI snapshot at market open): $${openPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
   close_time: ${new Date(market.close_time).toISOString()}
 
 CURRENT STATE:
   btc_spot: ${btcPrice}
-  delta_from_open: $${deltaFromOpen.toFixed(0)} (BTC is ${btcPrice >= openPrice ? "ABOVE" : "BELOW"} its opening price — ${btcPrice >= openPrice ? "YES is currently winning" : "NO is currently winning"})
+  delta_from_open: ${deltaFromOpen >= 0 ? '+' : ''}$${deltaFromOpen.toFixed(2)} — BTC is ${deltaFromOpen >= 0 ? 'ABOVE open price, YES is currently winning' : 'BELOW open price, NO is currently winning'}
   seconds_to_close: ${secsToClose}
   yes_bid: ${market.yes_bid}¢  yes_ask: ${market.yes_ask}¢
   no_bid: ${market.no_bid}¢  no_ask: ${market.no_ask}¢
