@@ -84,6 +84,9 @@ export default function Dashboard() {
             <Link href="/history">
               <button className="glass-btn px-3 py-1.5 text-xs text-white/60 hover:text-white/90">History</button>
             </Link>
+            <Link href="/strategy">
+              <button className="glass-btn px-3 py-1.5 text-xs text-white/60 hover:text-white/90">Strategy</button>
+            </Link>
             <Link href="/settings">
               <button className="glass-btn px-3 py-1.5 text-xs text-white/60 hover:text-white/90 flex items-center gap-1.5">
                 <Settings size={12} /> Settings
