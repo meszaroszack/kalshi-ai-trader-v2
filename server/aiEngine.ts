@@ -810,7 +810,7 @@ async function tryAIEntry(
       settingsVersion: settings.settingsVersion,
     });
 
-    // Check if order was immediately filled (not resting)
+    // Confirm fill: if order_id is NOT in resting orders, it was filled immediately
     try {
       const restingOrders = await getOpenOrders(creds.apiKeyId, creds.privateKeyPem, creds.environment);
       const isResting = restingOrders.some((o: any) => o.order_id === order.order_id);
@@ -818,7 +818,7 @@ async function tryAIEntry(
         await storage.updateTrade(trade.id, { status: "filled" });
       }
     } catch (e: any) {
-      console.error("[AI] Failed to check order status:", e.message);
+      console.error("[AI] Failed to confirm order fill status:", e.message);
     }
 
     state.activeSwingTrade = {
