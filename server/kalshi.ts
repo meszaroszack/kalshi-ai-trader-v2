@@ -184,24 +184,15 @@ export async function placeOrder(
   env = "production"
 ): Promise<KalshiOrder> {
   const base = env === "demo" ? DEMO_BASE : PROD_BASE;
-  const body = action === "buy"
-    ? {
-        ticker,
-        action,
-        side,
-        count,
-        type: "market",
-        client_order_id: crypto.randomUUID(),
-      }
-    : {
-        ticker,
-        action,
-        side,
-        count,
-        type: "limit",
-        ...(side === "yes" ? { yes_price: priceInCents } : { no_price: priceInCents }),
-        client_order_id: crypto.randomUUID(),
-      };
+  const body = {
+    ticker,
+    action,
+    side,
+    count,
+    type: "limit",
+    ...(side === "yes" ? { yes_price: priceInCents } : { no_price: priceInCents }),
+    client_order_id: crypto.randomUUID(),
+  };
   const data = await kalshiRequest("POST", "/portfolio/orders", apiKeyId, privateKeyPem, base, body);
   return data.order;
 }
