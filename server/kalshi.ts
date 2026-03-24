@@ -184,15 +184,24 @@ export async function placeOrder(
   env = "production"
 ): Promise<KalshiOrder> {
   const base = env === "demo" ? DEMO_BASE : PROD_BASE;
-  const body = {
-    ticker,
-    action,
-    side,
-    count,
-    type: "limit",
-    ...(side === "yes" ? { yes_price: priceInCents } : { no_price: priceInCents }),
-    client_order_id: crypto.randomUUID(),
-  };
+  const body = action === "buy"
+    ? {
+        ticker,
+        action,
+        side,
+        count,
+        type: "market",
+        client_order_id: crypto.randomUUID(),
+      }
+    : {
+        ticker,
+        action,
+        side,
+        count,
+        type: "limit",
+        ...(side === "yes" ? { yes_price: priceInCents } : { no_price: priceInCents }),
+        client_order_id: crypto.randomUUID(),
+      };
   const data = await kalshiRequest("POST", "/portfolio/orders", apiKeyId, privateKeyPem, base, body);
   return data.order;
 }
@@ -215,24 +224,5 @@ export async function getBtcPrice(): Promise<number> {
     return parseFloat(json.data?.amount ?? "0");
   } catch {
     return 0;
-  }
-}
-
-// Fetch recent BTC price history for indicators
-export async function getBtcPriceHistory(count = 30): Promise<number[]> {
-  try {
-    const end = Math.floor(Date.now() / 1000);
-    const start = end - count * 60; // one data point per minute
-    const res = await fetch(
-      `https://api.coinbase.com/v2/prices/BTC-USD/historic?period=hour`
-    );
-    const json = await res.json();
-    const prices: number[] = (json.data?.prices ?? [])
-      .slice(0, count)
-      .map((p: any) => parseFloat(p.price))
-      .reverse();
-    return prices;
-  } catch {
-    return [];
   }
 }

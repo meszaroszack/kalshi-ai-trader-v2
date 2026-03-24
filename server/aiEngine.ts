@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import * as memory from "./memory";
 import {
   getBtcPrice, getBtc15mMarkets, getBalance, getOpenPositions,
-  getSettledPositions, placeOrder, KalshiMarket
+  getSettledPositions, getOpenOrders, placeOrder, KalshiMarket
 } from "./kalshi";
 import type { EventEmitter } from "events";
 
@@ -659,7 +659,8 @@ async function runCycle() {
         } else {
           if (secondsToClose < 600) consecutiveSkips = 0;
           if (consecutiveSkips >= 3) {
-            // Don't call AI this cycle
+            console.log("[AI] Skipping this cycle — 3 consecutive skips, waiting for next market");
+            broadcast("info", { message: "AI skipping — 3 consecutive skips" });
           } else {
             await tryAIEntry(settings, creds, state.currentMarket, performanceContext);
           }
@@ -802,12 +803,23 @@ async function tryAIEntry(
       count,
       pricePerContract: priceInCents,
       totalCost: actualCost,
-      status: "filled",
+      status: "open",
       signalReason: `[AI V2 ${decision.confidence}% ${decision.regime ?? ""}] ${decision.reasoning}`,
       btcPriceAtTrade: state.btcPrice,
       marketTitle: market.title,
       settingsVersion: settings.settingsVersion,
     });
+
+    // Check if order was immediately filled (not resting)
+    try {
+      const restingOrders = await getOpenOrders(creds.apiKeyId, creds.privateKeyPem, creds.environment);
+      const isResting = restingOrders.some((o: any) => o.order_id === order.order_id);
+      if (!isResting) {
+        await storage.updateTrade(trade.id, { status: "filled" });
+      }
+    } catch (e: any) {
+      console.error("[AI] Failed to check order status:", e.message);
+    }
 
     state.activeSwingTrade = {
       tradeId: trade.id,
